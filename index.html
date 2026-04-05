@@ -129,6 +129,9 @@ function App() {
   const [modalEditarAluno, setModalEditarAluno] = useState(null);
   const [modalFotoAluno, setModalFotoAluno] = useState(null);
   const [modalObservacoes, setModalObservacoes] = useState(null);
+  const [modalAdicionarCurso, setModalAdicionarCurso] = useState(null); // {aluno, curso}
+  const [valorNovoCurso, setValorNovoCurso] = useState("");
+  const [gratuito, setGratuito] = useState(false);
   const [modalImportCSV, setModalImportCSV] = useState(false);
   const [previewCSV, setPreviewCSV] = useState([]);
   const [erroCSV, setErroCSV] = useState("");
@@ -351,8 +354,9 @@ function App() {
   const cursosMensais = (a) => (a.cursos||[]).filter(cid=>{ const c=cursos.find(x=>x.id===cid); return !c||c.tipo!=="unico"; });
   const cursosUnicos = (a) => (a.cursos||[]).filter(cid=>{ const c=cursos.find(x=>x.id===cid); return c&&c.tipo==="unico"; });
   const isPago = (a) => {
-    const mens = cursosMensais(a);
-    const unicos = cursosUnicos(a);
+    const gratis = a.cursosGratuitos||[];
+    const mens = cursosMensais(a).filter(cid=>!gratis.includes(cid));
+    const unicos = cursosUnicos(a).filter(cid=>!gratis.includes(cid));
     const mensPagos = mens.length===0 || mens.every(cid=>a.pagamentosCursos?.[cid]?.[mesAtual]??false);
     const unicosPagos = unicos.length===0 || unicos.every(cid=>{ const c=cursos.find(x=>x.id===cid); const s=getStatusValorUnico(a,c); return s&&(s.status==="ativo"||s.status==="expirando"); });
     return (a.cursos?.length>0) && mensPagos && unicosPagos;
@@ -371,11 +375,15 @@ function App() {
   const inadimplentes = alunos.filter(a=>isAtrasado(a)||isParcial(a)).length;
   const totalRecebido = alunos.reduce((s,a)=>{
     if (!a.cursos?.length) return s;
-    const mensal = (a.cursos||[]).filter(cid=>{ const c=cursos.find(x=>x.id===cid); return (!c||c.tipo!=="unico") && (a.pagamentosCursos?.[cid]?.[mesAtual]); }).reduce((t,cid)=>t+(a.valoresCursos?.[cid]||0),0);
-    const unico = (a.cursos||[]).filter(cid=>{ const c=cursos.find(x=>x.id===cid); if(!c||c.tipo!=="unico") return false; const st=getStatusValorUnico(a,c); return st&&(st.status==="ativo"||st.status==="expirando"); }).reduce((t,cid)=>t+(a.valoresCursos?.[cid]||0),0);
+    const gratis = a.cursosGratuitos||[];
+    const mensal = (a.cursos||[]).filter(cid=>{ const c=cursos.find(x=>x.id===cid); return !gratis.includes(cid) && (!c||c.tipo!=="unico") && (a.pagamentosCursos?.[cid]?.[mesAtual]); }).reduce((t,cid)=>t+(a.valoresCursos?.[cid]||0),0);
+    const unico = (a.cursos||[]).filter(cid=>{ const c=cursos.find(x=>x.id===cid); if(!c||c.tipo!=="unico"||gratis.includes(cid)) return false; const st=getStatusValorUnico(a,c); return st&&(st.status==="ativo"||st.status==="expirando"); }).reduce((t,cid)=>t+(a.valoresCursos?.[cid]||0),0);
     return s + mensal + unico;
   },0);
-  const totalEsperado = alunos.filter(a=>a.cursos?.length>0).reduce((s,a)=>s+Object.values(a.valoresCursos||{}).reduce((t,v)=>t+v,0),0);
+  const totalEsperado = alunos.filter(a=>a.cursos?.length>0).reduce((s,a)=>{
+    const vals = (a.cursos||[]).filter(cid=>!(a.cursosGratuitos||[]).includes(cid)).reduce((t,cid)=>t+(a.valoresCursos?.[cid]||0),0);
+    return s+vals;
+  },0);
   const pct = alunos.length>0 ? Math.round(pagosHoje/alunos.length*100) : 0;
 
   const getStatusValorUnico = (aluno, curso) => {
@@ -601,6 +609,27 @@ Curso(s): ${nomeCursos}` : "")
       await fsLib.updateDoc(fsLib.doc(db,"tenants",tenantAtual.id,"alunos",alunoId), { foto: fotoBase64 });
       showToast("✅ Foto salva!");
     } catch { showToast("Erro ao salvar foto.","erro"); }
+  };
+
+  const confirmarAdicionarCurso = async () => {
+    if (!modalAdicionarCurso || !db || !fsLib || !tenantAtual?.id) return;
+    const { aluno, curso } = modalAdicionarCurso;
+    const valor = gratuito ? 0 : parseFloat(valorNovoCurso);
+    if (!gratuito && (isNaN(valor) || valorNovoCurso === "")) { return; }
+    try {
+      const cursosAtuais = aluno.cursos||[];
+      const valAtual = aluno.valoresCursos||{};
+      const pagAtual = aluno.pagamentosCursos||{};
+      const cursoGratis = aluno.cursosGratuitos||[];
+      await fsLib.updateDoc(fsLib.doc(db,"tenants",tenantAtual.id,"alunos",aluno.id), {
+        cursos: [...cursosAtuais, curso.id],
+        valoresCursos: {...valAtual, [curso.id]: valor},
+        pagamentosCursos: {...pagAtual, [curso.id]: {}},
+        cursosGratuitos: gratuito ? [...cursoGratis, curso.id] : cursoGratis
+      });
+      showToast(gratuito ? "🎁 "+aluno.nome.split(" ")[0]+" adicionado gratuitamente!" : "✅ "+aluno.nome.split(" ")[0]+" adicionado com R$ "+valor+"!");
+      setModalAdicionarCurso(null);
+    } catch(e) { showToast("Erro ao adicionar.","erro"); }
   };
 
   const salvarObservacoes = async (alunoId, obs) => {
@@ -1063,6 +1092,7 @@ Curso(s): ${nomeCursos}` : "")
                       <div style={{display:"flex",flexDirection:"column",gap:10}}>
                         {cursos.filter(c=>alunoSelecionado.cursos?.includes(c.id)).map(c=>{
                           const valC = alunoSelecionado.valoresCursos?.[c.id] ?? 0;
+                          const isGratuito = (alunoSelecionado.cursosGratuitos||[]).includes(c.id);
                           if (c.tipo === "unico") {
                             const statusU = getStatusValorUnico(alunoSelecionado, c);
                             return (
@@ -1071,6 +1101,7 @@ Curso(s): ${nomeCursos}` : "")
                                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                                     <div style={{fontWeight:700,color:c.cor||"#9b5de5"}}>{c.nome}</div>
                                     <span style={{fontSize:10,background:"#2a1a4a",color:"#c084fc",border:"1px solid #7c3aed",padding:"2px 8px",borderRadius:20,fontWeight:700}}>ÚNICO</span>
+                                    {isGratuito&&<span style={{fontSize:10,background:"#0d3d2e",color:"#4ade80",border:"1px solid #166534",padding:"2px 8px",borderRadius:20,fontWeight:700}}>🎁 GRÁTIS</span>}
                                   </div>
                                   <div style={{fontSize:12,color:"#888"}}>R$ {valC} • {statusU?.texto}</div>
                                   {c.mesesExpiracao && <div style={{fontSize:11,color:"#555"}}>Acesso por {c.mesesExpiracao} meses</div>}
@@ -1100,9 +1131,13 @@ Curso(s): ${nomeCursos}` : "")
                               </div>
                               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                                 {pagoC && <button className="btn" style={{background:"#1a3a2a",color:"#4ade80",border:"1px solid #166534",padding:"6px 10px",fontSize:11}} onClick={()=>abrirRecibo(alunoSelecionado,mesAtual,c.id,c.nome)}>🧾</button>}
-                                <button className="btn" style={{background:pagoC?"#2a2a35":"#6c3fc5",color:"#fff",padding:"7px 12px",fontSize:12}} onClick={()=>setModalPagamento({aluno:alunoSelecionado,mesKey:mesAtual,pago:pagoC,cursoId:c.id})}>
-                                  {pagoC?"Desmarcar":"Marcar Pago"}
-                                </button>
+                                {isGratuito ? (
+                                  <span style={{fontSize:12,color:"#4ade80",fontWeight:600}}>🎁 Gratuito</span>
+                                ) : (
+                                  <button className="btn" style={{background:pagoC?"#2a2a35":"#6c3fc5",color:"#fff",padding:"7px 12px",fontSize:12}} onClick={()=>setModalPagamento({aluno:alunoSelecionado,mesKey:mesAtual,pago:pagoC,cursoId:c.id})}>
+                                    {pagoC?"Desmarcar":"Marcar Pago"}
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -1325,19 +1360,10 @@ Curso(s): ${nomeCursos}` : "")
                               <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 8px"}}>
                                 <div className="avatar" style={{background:"#1a1a2e",color:"#888"}}>{a.nome?.[0]}</div>
                                 <div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{a.nome}</div><div style={{fontSize:12,color:"#555"}}>{cursos.filter(c=>a.cursos?.includes(c.id)).map(c=>c.nome).join(", ")||"Sem curso"}</div></div>
-                                <button className="btn" style={{background:"#1a3a2a",color:"#4ade80",border:"1px solid #166534",padding:"6px 12px",fontSize:12}} onClick={async()=>{
-                                  if(!db||!fsLib) return;
-                                  const valorCurso = prompt(`Valor da mensalidade de ${a.nome.split(" ")[0]} neste curso (R$):`);
-                                  if(!valorCurso || isNaN(parseFloat(valorCurso))) { showToast("Valor inválido!","erro"); return; }
-                                  const cursosAtuais = a.cursos||[];
-                                  const valAtual = a.valoresCursos||{};
-                                  const pagAtual = a.pagamentosCursos||{};
-                                  await fsLib.updateDoc(fsLib.doc(db,"alunos",a.id),{
-                                    cursos:[...cursosAtuais,cursoAtivo.id],
-                                    valoresCursos:{...valAtual,[cursoAtivo.id]:parseFloat(valorCurso)},
-                                    pagamentosCursos:{...pagAtual,[cursoAtivo.id]:{}}
-                                  });
-                                  showToast(`✅ ${a.nome.split(" ")[0]} adicionado com R$ ${valorCurso}!`);
+                                <button className="btn" style={{background:"#1a3a2a",color:"#4ade80",border:"1px solid #166534",padding:"6px 12px",fontSize:12}} onClick={()=>{
+                                  setValorNovoCurso("");
+                                  setGratuito(false);
+                                  setModalAdicionarCurso({aluno:a, curso:cursoAtivo});
                                 }}>+ Adicionar</button>
                               </div>
                             </div>
@@ -1731,6 +1757,52 @@ Curso(s): ${nomeCursos}` : "")
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {modalAdicionarCurso&&(
+        <div className="overlay" onClick={()=>setModalAdicionarCurso(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:420}}>
+            <h3 style={{fontWeight:800,marginBottom:6}}>➕ Adicionar ao Curso</h3>
+            <p style={{fontSize:13,color:"#888",marginBottom:20}}>
+              <span style={{color:"#e8e6f0",fontWeight:600}}>{modalAdicionarCurso.aluno.nome.split(" ")[0]}</span> → <span style={{color:modalAdicionarCurso.curso.cor||"#9b5de5",fontWeight:600}}>{modalAdicionarCurso.curso.nome}</span>
+            </p>
+
+            {/* Gratuito toggle */}
+            <div style={{background:"#12121a",borderRadius:12,padding:"14px 16px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",border:gratuito?"1px solid #166534":"1px solid #2a2a35"}} onClick={()=>setGratuito(g=>!g)}>
+              <div>
+                <div style={{fontWeight:700,fontSize:14,color:gratuito?"#4ade80":"#e8e6f0"}}>🎁 Curso Gratuito</div>
+                <div style={{fontSize:12,color:"#666",marginTop:2}}>Isenta este aluno do pagamento</div>
+              </div>
+              <div style={{width:44,height:24,borderRadius:999,background:gratuito?"#166534":"#2a2a35",position:"relative",transition:"all .2s",flexShrink:0}}>
+                <div style={{position:"absolute",top:2,left:gratuito?20:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"all .2s"}}/>
+              </div>
+            </div>
+
+            {/* Valor input - only if not gratuito */}
+            {!gratuito && (
+              <div style={{marginBottom:16}}>
+                <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>
+                  {modalAdicionarCurso.curso.tipo==="unico" ? "💎 Valor único (R$)" : "💰 Valor mensal (R$)"}
+                </label>
+                <input className="input-field" type="number" min="0" placeholder="Ex: 200" value={valorNovoCurso} onChange={e=>setValorNovoCurso(e.target.value)} autoFocus/>
+              </div>
+            )}
+
+            {gratuito && (
+              <div style={{background:"#0d3d2e",border:"1px solid #166534",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#4ade80"}}>
+                ✅ Este aluno terá acesso gratuito — não aparecerá nos cálculos financeiros
+              </div>
+            )}
+
+            <div style={{display:"flex",gap:10}}>
+              <button className="btn" style={{background:"#2a2a35",color:"#888",padding:"11px 20px",flex:1}} onClick={()=>setModalAdicionarCurso(null)}>Cancelar</button>
+              <button className="btn" style={{background:gratuito?"#166534":"linear-gradient(135deg,#6c3fc5,#9b5de5)",color:"#fff",padding:"11px 20px",flex:2,fontWeight:700,opacity:(!gratuito&&!valorNovoCurso)?0.5:1}}
+                onClick={confirmarAdicionarCurso} disabled={!gratuito&&!valorNovoCurso}>
+                {gratuito?"🎁 Adicionar Gratuitamente":"✅ Confirmar"}
+              </button>
+            </div>
           </div>
         </div>
       )}
