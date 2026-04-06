@@ -95,7 +95,7 @@ function App() {
   const [usuariosDB, setUsuariosDB] = useState([]);
   const [USUARIOS, setUSUARIOS] = useState([]);
 
-  const fazerLogin = () => {
+  const fazerLogin = async () => {
     // Check master admin first
     if (loginUser.toLowerCase().trim() === MASTER_ADMIN.usuario && loginPass === MASTER_ADMIN.senha) {
       setLogado(true); setLoginUser_atual(MASTER_ADMIN); setTenantAtual(null); setLoginErro(""); return;
