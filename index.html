@@ -1444,7 +1444,21 @@ Curso(s): ${nomeCursos}` : "")
                         {u.id && u.id !== 'admin_fixo' && (
                           <button className="btn" style={{background:"#3d1010",color:"#f87171",padding:"5px 10px",fontSize:11}} onClick={()=>removerUsuario(u.id)}>🗑️</button>
                         )}
-                        {(!u.id || u.id === 'admin_fixo') && <span style={{fontSize:11,color:"#9b5de5",padding:"4px 10px",border:"1px solid #6c3fc5",borderRadius:20}}>👑 Admin Principal</span>}
+                        {(!u.id || u.id === 'admin_fixo') && (
+                          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                            <button className="btn" style={{background:"#1a2a1a",color:"#4ade80",border:"1px solid #166534",padding:"5px 10px",fontSize:11}} onClick={async()=>{
+                              const tel = prompt("Seu número WhatsApp (ex: 33783600611):", "");
+                              if (tel !== null) {
+                                const adminDoc = usuariosDB.find(x=>x.admin);
+                                if (adminDoc?.id) {
+                                  await fsLib.updateDoc(fsLib.doc(db,"tenants",tenantAtual.id,"usuarios",adminDoc.id),{telefone:tel.replace(/\D/g,"")});
+                                  showToast("📱 Telefone atualizado!");
+                                } else { showToast("Erro: admin não encontrado no banco","erro"); }
+                              }
+                            }}>📱</button>
+                            <span style={{fontSize:11,color:"#9b5de5",padding:"4px 10px",border:"1px solid #6c3fc5",borderRadius:20}}>👑 Admin Principal</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
