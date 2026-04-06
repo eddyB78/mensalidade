@@ -86,7 +86,7 @@ function App() {
   const [dadosEditarTenant, setDadosEditarTenant] = useState({nome:"", email:"", plano:"basico", senhaAdmin:""});
   const [loginUser_atual, setLoginUser_atual] = useState(null);
   const [telaUsuarios, setTelaUsuarios] = useState(false);
-  const [novoUsuario, setNovoUsuario] = useState({nome:"",usuario:"",senha:"",isAdmin:false});
+  const [novoUsuario, setNovoUsuario] = useState({nome:"",usuario:"",senha:"",telefone:"",isAdmin:false});
   const [erroUsuario, setErroUsuario] = useState("");
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
@@ -318,9 +318,11 @@ function App() {
     try {
       if (!tenantAtual?.id) { setErroUsuario("Erro: cliente não identificado."); return; }
       await fsLib.setDoc(fsLib.doc(db, "tenants", tenantAtual.id, "usuarios", Date.now().toString()), {
-        nome: novoUsuario.nome, usuario: novoUsuario.usuario.toLowerCase().trim(), senha: novoUsuario.senha, admin: novoUsuario.isAdmin, tenantId: tenantAtual.id
+        nome: novoUsuario.nome, usuario: novoUsuario.usuario.toLowerCase().trim(), senha: novoUsuario.senha,
+        telefone: novoUsuario.telefone.replace(/\D/g,"") || "",
+        admin: novoUsuario.isAdmin, tenantId: tenantAtual.id
       });
-      setNovoUsuario({nome:"",usuario:"",senha:"",isAdmin:false});
+      setNovoUsuario({nome:"",usuario:"",senha:"",telefone:"",isAdmin:false});
       setErroUsuario("");
       alert("✅ Usuário criado com sucesso!");
     } catch { setErroUsuario("Erro ao salvar."); }
@@ -1384,7 +1386,7 @@ Curso(s): ${nomeCursos}` : "")
               <div className="card" style={{padding:24,marginBottom:20}}>
                 <div style={{fontWeight:700,marginBottom:16}}>➕ Novo Usuário</div>
                 <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                  {[["Nome completo","nome","text","Ex: Maria Silva"],["Usuário (login)","usuario","text","Ex: maria"],["Senha","senha","password","Mínimo 6 caracteres"]].map(([label,field,type,ph])=>(
+                  {[["Nome completo","nome","text","Ex: Maria Silva"],["Usuário (login)","usuario","text","Ex: maria"],["Senha","senha","password","Mínimo 6 caracteres"],["WhatsApp (com código do país)","telefone","text","Ex: +55 11 99999-9999"]].map(([label,field,type,ph])=>(
                     <div key={field}>
                       <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>{label}</label>
                       <input className="input-field" type={type} placeholder={ph} value={novoUsuario[field]} onChange={e=>setNovoUsuario(p=>({...p,[field]:e.target.value}))}/>
@@ -1416,7 +1418,7 @@ Curso(s): ${nomeCursos}` : "")
                           {u.nome}
                           {u.admin && <span style={{fontSize:10,background:"#1a1a2e",color:"#9b5de5",border:"1px solid #6c3fc5",padding:"2px 8px",borderRadius:20,fontWeight:700}}>ADMIN</span>}
                         </div>
-                        <div style={{fontSize:12,color:"#888"}}>@{u.usuario}</div>
+                        <div style={{fontSize:12,color:"#888"}}>@{u.usuario}{u.telefone&&<span style={{color:"#4ade80"}}> • 📱 +{u.telefone}</span>}</div>
                       </div>
                       <div style={{display:"flex",gap:6,alignItems:"center"}}>
                         {u.id && u.id !== 'admin_fixo' && (
@@ -1424,11 +1426,20 @@ Curso(s): ${nomeCursos}` : "")
                             onClick={async()=>{
                               try {
                                 await fsLib.updateDoc(fsLib.doc(db,"tenants",tenantAtual.id,"usuarios",u.id),{admin:!u.admin});
-                                showToast(u.admin?"↩️ Admin removido":"✅ Admin concedido!");
+                                showToast(!u.admin?"✅ Admin concedido!":"↩️ Admin removido");
                               } catch { showToast("Erro ao atualizar.","erro"); }
                             }}>
                             {u.admin?"👑 Admin":"👤 Normal"}
                           </button>
+                        )}
+                        {u.id && u.id !== 'admin_fixo' && (
+                          <button className="btn" style={{background:"#1a2a1a",color:"#4ade80",border:"1px solid #166534",padding:"5px 10px",fontSize:11}} onClick={async()=>{
+                            const tel = prompt("Número WhatsApp do usuário (com código do país, ex: 5511999999999):", u.telefone||"");
+                            if (tel !== null) {
+                              await fsLib.updateDoc(fsLib.doc(db,"tenants",tenantAtual.id,"usuarios",u.id),{telefone:tel.replace(/\D/g,"")});
+                              showToast("📱 Telefone atualizado!");
+                            }
+                          }}>📱</button>
                         )}
                         {u.id && u.id !== 'admin_fixo' && (
                           <button className="btn" style={{background:"#3d1010",color:"#f87171",padding:"5px 10px",fontSize:11}} onClick={()=>removerUsuario(u.id)}>🗑️</button>
