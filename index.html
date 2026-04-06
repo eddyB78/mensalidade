@@ -117,15 +117,20 @@ function App() {
           const tenantsSnap = await fsLib.getDocs(fsLib.collection(db,"tenants"));
           for (const tDoc of tenantsSnap.docs) {
             if (!tDoc.data().ativo) continue;
-            const usersSnap = await fsLib.getDocs(fsLib.collection(db,"tenants",tDoc.id,"usuarios"));
-            const found = usersSnap.docs.find(d => d.data().usuario === userPart && d.data().senha === loginPass);
-            if (found) {
-              const userData = {id:found.id, tenantId:tDoc.id, ...found.data()};
-              setLogado(true);
-              setLoginUser_atual({...userData, admin: userData.admin === true});
-              setTenantAtual({id:tDoc.id, ...tDoc.data()});
-              setLoginErro("");
-              return;
+            // Try both "usuarios" and "usuario" collection names
+            for (const colName of ["usuarios","usuario"]) {
+              try {
+                const usersSnap = await fsLib.getDocs(fsLib.collection(db,"tenants",tDoc.id,colName));
+                const found = usersSnap.docs.find(d => d.data().usuario === userPart && d.data().senha === loginPass);
+                if (found) {
+                  const userData = {id:found.id, tenantId:tDoc.id, ...found.data()};
+                  setLogado(true);
+                  setLoginUser_atual({...userData, admin: userData.admin === true});
+                  setTenantAtual({id:tDoc.id, ...tDoc.data()});
+                  setLoginErro("");
+                  return;
+                }
+              } catch(e2) {}
             }
           }
         } catch(e) { console.error(e); }
