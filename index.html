@@ -110,7 +110,28 @@ function App() {
       const t = tenants.find(t=>t.id===user.tenantId);
       setTenantAtual(t||{id:user.tenantId});
       setLoginErro("");
-    } else { setLoginErro("Usuário ou senha incorretos!"); }
+    } else {
+      // Try to find tenant by checking all tenants for this admin
+      if (db && fsLib) {
+        try {
+          const tenantsSnap = await fsLib.getDocs(fsLib.collection(db,"tenants"));
+          for (const tDoc of tenantsSnap.docs) {
+            if (!tDoc.data().ativo) continue;
+            const usersSnap = await fsLib.getDocs(fsLib.collection(db,"tenants",tDoc.id,"usuarios"));
+            const found = usersSnap.docs.find(d => d.data().usuario === userPart && d.data().senha === loginPass);
+            if (found) {
+              const userData = {id:found.id, tenantId:tDoc.id, ...found.data()};
+              setLogado(true);
+              setLoginUser_atual({...userData, admin: userData.admin === true});
+              setTenantAtual({id:tDoc.id, ...tDoc.data()});
+              setLoginErro("");
+              return;
+            }
+          }
+        } catch(e) { console.error(e); }
+      }
+      setLoginErro("Usuário ou senha incorretos!");
+    }
   };
 
   const [db, setDb] = useState(null);
@@ -1408,7 +1429,7 @@ Curso(s): ${nomeCursos}` : "")
 
               <div className="card" style={{padding:20}}>
                 <div style={{fontWeight:700,marginBottom:16}}>👥 Usuários Cadastrados</div>
-                {[loginUser_atual?.admin ? {id:'admin_fixo', nome:loginUser_atual.nome, usuario:'admin', admin:true} : null, ...usuariosDB.filter(u=>!u.admin||u.id!=='admin_fixo')].filter(Boolean).map((u,i)=>(
+                {[loginUser_atual?.admin && !usuariosDB.find(u=>u.admin) ? {id:'admin_fixo', nome:loginUser_atual.nome, usuario:loginUser_atual.usuario||'admin', admin:true} : null, ...usuariosDB].filter(Boolean).map((u,i)=>(
                   <div key={u.id||i}>
                     {i>0&&<div style={{height:1,background:"#2a2a35",margin:"0 8px"}}/>}
                     <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 8px"}}>
@@ -1445,17 +1466,20 @@ Curso(s): ${nomeCursos}` : "")
                           <button className="btn" style={{background:"#3d1010",color:"#f87171",padding:"5px 10px",fontSize:11}} onClick={()=>removerUsuario(u.id)}>🗑️</button>
                         )}
                         {(!u.id || u.id === 'admin_fixo') && (
-                          <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                            <button className="btn" style={{background:"#1a2a1a",color:"#4ade80",border:"1px solid #166534",padding:"5px 10px",fontSize:11}} onClick={async()=>{
+                          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                            <button className="btn" style={{background:"#1a2d3a",color:"#60a5fa",border:"1px solid #1e40af",padding:"5px 10px",fontSize:11}} onClick={async()=>{
                               const tel = prompt("Seu número WhatsApp (ex: 33783600611):", "");
-                              if (tel !== null) {
-                                const adminDoc = usuariosDB.find(x=>x.admin);
-                                if (adminDoc?.id) {
-                                  await fsLib.updateDoc(fsLib.doc(db,"tenants",tenantAtual.id,"usuarios",adminDoc.id),{telefone:tel.replace(/\D/g,"")});
-                                  showToast("📱 Telefone atualizado!");
-                                } else { showToast("Erro: admin não encontrado no banco","erro"); }
+                              const novasenha = prompt("Confirme sua senha atual:");
+                              if (tel !== null && novasenha) {
+                                const newId = "admin_"+tenantAtual.id;
+                                await fsLib.setDoc(fsLib.doc(db,"tenants",tenantAtual.id,"usuarios",newId),{
+                                  nome: loginUser_atual.nome, usuario: loginUser_atual.usuario||"admin",
+                                  senha: novasenha, admin: true, tenantId: tenantAtual.id,
+                                  telefone: tel.replace(/\D/g,"")
+                                });
+                                showToast("✅ Admin registrado com telefone!");
                               }
-                            }}>📱</button>
+                            }}>📱 Registrar</button>
                             <span style={{fontSize:11,color:"#9b5de5",padding:"4px 10px",border:"1px solid #6c3fc5",borderRadius:20}}>👑 Admin Principal</span>
                           </div>
                         )}
