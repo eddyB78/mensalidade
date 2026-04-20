@@ -75,6 +75,9 @@ const gerarReciboHTML = (aluno, mesKey, cursoId=null, nomeCurso=null) => {
 
 function App() {
   const MASTER_ADMIN = { usuario: "master", senha: "criatimaster2026", nome: "Super Admin", master: true };
+  const EVOLUTION_API_URL = "http://145.241.171.170:8080";
+  const EVOLUTION_API_KEY = "minha-chave-secreta-2026";
+  const EVOLUTION_INSTANCE = "mensalidade";
 
   const [logado, setLogado] = useState(false);
   const [tenantAtual, setTenantAtual] = useState(null);
@@ -472,6 +475,28 @@ function App() {
     if (filtro==="atrasados") return isAtrasado(a) && ok;
     return ok;
   });
+
+  const enviarMensagemDireta = async (numero, texto) => {
+    try {
+      const tel = numero.replace(/[^\d]/g, "");
+      const resp = await fetch(EVOLUTION_API_URL + "/message/sendText/" + EVOLUTION_INSTANCE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY },
+        body: JSON.stringify({ number: tel, text: texto })
+      });
+      const data = await resp.json();
+      if (data.key || data.id || data.status === "PENDING") {
+        showToast("✅ Mensagem enviada!");
+        return true;
+      } else {
+        showToast("❌ Erro: " + (data.message||"tente novamente"), "erro");
+        return false;
+      }
+    } catch(e) {
+      showToast("❌ Erro de conexão", "erro");
+      return false;
+    }
+  };
 
   const gerarMsg = (aluno, cursoId=null) => {
     const [,mes] = mesAtual.split("-");
@@ -1247,7 +1272,7 @@ Curso(s): ${nomeCursos}` : "")
                     <div className="card" style={{padding:24,marginBottom:20}}>
                       <div style={{fontWeight:700,marginBottom:12}}>💬 Cobrança</div>
                       <div style={{background:"#12121a",borderRadius:10,padding:16,fontSize:13,color:"#ccc",lineHeight:1.7,whiteSpace:"pre-wrap",marginBottom:14}}>{gerarMsg(alunoSelecionado)}</div>
-                      <button className="btn" style={{background:"#25d366",color:"#fff",padding:"10px 18px",fontSize:14,width:"100%"}} onClick={()=>{const msg=encodeURIComponent(gerarMsg(alunoSelecionado));const tel=alunoSelecionado.telefone?.replace(/\D/g,"");window.open(`https://wa.me/${tel}?text=${msg}`,"_blank");}}>📲 Enviar pelo WhatsApp</button>
+                      <button className="btn" style={{background:"#25d366",color:"#fff",padding:"10px 18px",fontSize:14,width:"100%"}} onClick={async()=>{await enviarMensagemDireta(alunoSelecionado.telefone,gerarMsg(alunoSelecionado));}}>📲 Enviar</button>
                     </div>
                   )}
                 </>
@@ -1286,8 +1311,7 @@ Curso(s): ${nomeCursos}` : "")
                         <div style={{fontSize:11,color:"#666",marginTop:2}}>{cursos.filter(c=>a.cursos?.includes(c.id)&&!a.pagamentosCursos?.[c.id]?.[mesAtual]).map(c=>c.nome).join(", ")}</div>
                       </div>
                       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                        <button className="btn" style={{background:"#25d366",color:"#fff",padding:"8px 14px",fontSize:12}} onClick={()=>{const msg=encodeURIComponent(gerarMsg(a));const tel=a.telefone?.replace(/\D/g,"");window.open(`https://wa.me/${tel}?text=${msg}`,"_blank");}}>📲 WhatsApp</button>
-                        <button className="btn" style={{background:"#6c3fc5",color:"#fff",padding:"8px 14px",fontSize:12}} onClick={()=>setMensagemEnviada(a)}>👁️ Ver msg</button>
+                        <button className="btn" style={{background:"#25d366",color:"#fff",padding:"8px 14px",fontSize:12}} onClick={async()=>{await enviarMensagemDireta(a.telefone,gerarMsg(a));}}>📲 Enviar</button>
                       </div>
                     </div>
                   </div>
@@ -1648,7 +1672,7 @@ Curso(s): ${nomeCursos}` : "")
             <div style={{background:"#0d1e14",border:"1px solid #166534",borderRadius:12,padding:18,fontSize:14,lineHeight:1.8,whiteSpace:"pre-wrap",color:"#d1fae5",marginBottom:16}}>{gerarMsg(mensagemEnviada)}</div>
             <div style={{display:"flex",gap:10}}>
               <button className="btn" style={{background:"#2a2a35",color:"#888",padding:"10px 16px",flex:1}} onClick={()=>setMensagemEnviada(null)}>Fechar</button>
-              <button className="btn" style={{background:"#25d366",color:"#fff",padding:"10px 16px",flex:2}} onClick={()=>{const msg=encodeURIComponent(gerarMsg(mensagemEnviada));const tel=mensagemEnviada.telefone?.replace(/\D/g,"");window.open(`https://wa.me/${tel}?text=${msg}`,"_blank");}}>📲 WhatsApp</button>
+              <button className="btn" style={{background:"#25d366",color:"#fff",padding:"10px 16px",flex:2}} onClick={async()=>{const ok=await enviarMensagemDireta(mensagemEnviada.telefone,gerarMsg(mensagemEnviada));if(ok)setMensagemEnviada(null);}}>📲 Enviar Agora</button>
             </div>
           </div>
         </div>
@@ -1657,38 +1681,6 @@ Curso(s): ${nomeCursos}` : "")
       {modalNovoCurso&&(
         <div className="overlay" onClick={()=>setModalNovoCurso(false)}>
           <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:400}}>
-            <h2 style={{fontWeight:800,marginBottom:20}}>🎓 Novo Curso</h2>
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Nome do curso *</label><input className="input-field" placeholder="Ex: Yoga, Pilates, Dança..." value={novoCurso.nome} onChange={e=>setNovoCurso(p=>({...p,nome:e.target.value}))}/></div>
-              <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Descrição</label><input className="input-field" placeholder="Ex: Turma de terça e quinta" value={novoCurso.descricao} onChange={e=>setNovoCurso(p=>({...p,descricao:e.target.value}))}/></div>
-              <div>
-                <label style={{fontSize:12,color:"#888",display:"block",marginBottom:8}}>💰 Tipo de Cobrança</label>
-                <div style={{display:"flex",gap:8}}>
-                  {[["mensalidade","📅 Mensalidade","Cobra todo mês"],["unico","💎 Valor Único","Paga uma vez"]].map(([val,label,desc])=>(
-                    <div key={val} onClick={()=>setNovoCurso(p=>({...p,tipo:val}))} style={{flex:1,padding:"12px",borderRadius:10,cursor:"pointer",border:`2px solid ${novoCurso.tipo===val?"#6c3fc5":"#2a2a35"}`,background:novoCurso.tipo===val?"#1a1a3a":"#12121a",textAlign:"center"}}>
-                      <div style={{fontWeight:700,fontSize:14,color:novoCurso.tipo===val?"#9b5de5":"#888"}}>{label}</div>
-                      <div style={{fontSize:11,color:"#555",marginTop:3}}>{desc}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {novoCurso.tipo==="unico" && (
-                <div style={{background:"#1a1a2e",borderRadius:10,padding:"12px 16px"}}>
-                  <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>⏱️ Acesso expira após quantos meses?</label>
-                  <input className="input-field" type="number" min="1" max="120" placeholder="Ex: 12" value={novoCurso.mesesExpiracao} onChange={e=>setNovoCurso(p=>({...p,mesesExpiracao:e.target.value}))}/>
-                  <div style={{fontSize:11,color:"#555",marginTop:6}}>Após este período, o aluno aparecerá como expirado</div>
-                </div>
-              )}
-              <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Cor do curso</label>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {["#6c3fc5","#f72585","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899"].map(cor=>(
-                    <div key={cor} onClick={()=>setNovoCurso(p=>({...p,cor}))} style={{width:32,height:32,borderRadius:"50%",background:cor,cursor:"pointer",border:novoCurso.cor===cor?"3px solid #fff":"3px solid transparent"}}/>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:10,marginTop:22}}>
-              <button className="btn" style={{background:"#2a2a35",color:"#888",padding:"11px 20px",flex:1}} onClick={()=>setModalNovoCurso(false)}>Cancelar</button>
               <button className="btn" style={{background:"linear-gradient(135deg,#6c3fc5,#9b5de5)",color:"#fff",padding:"11px 20px",flex:2}} onClick={adicionarCurso}>✅ Criar Curso</button>
             </div>
           </div>
