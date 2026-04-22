@@ -2,7 +2,11 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="theme-color" content="#0f0f13"/>
   <title>Mensalidade Cria Ti Na Luz</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -75,7 +79,7 @@ const gerarReciboHTML = (aluno, mesKey, cursoId=null, nomeCurso=null) => {
 
 function App() {
   const MASTER_ADMIN = { usuario: "master", senha: "criatimaster2026", nome: "Super Admin", master: true };
-  const EVOLUTION_API_URL = "http://145.241.171.170:8080";
+  const EVOLUTION_API_URL = "/api";
   const EVOLUTION_API_KEY = "minha-chave-secreta-2026";
   const EVOLUTION_INSTANCE = "mensalidade";
 
@@ -83,10 +87,10 @@ function App() {
   const [tenantAtual, setTenantAtual] = useState(null);
   const [tenants, setTenants] = useState([]);
   const [telaMaster, setTelaMaster] = useState("tenants");
-  const [novoTenant, setNovoTenant] = useState({nome:"", email:"", plano:"basico"});
+  const [novoTenant, setNovoTenant] = useState({nome:"", email:"", telefone:"", plano:"basico"});
   const [erroTenant, setErroTenant] = useState("");
   const [modalEditarTenant, setModalEditarTenant] = useState(null);
-  const [dadosEditarTenant, setDadosEditarTenant] = useState({nome:"", email:"", plano:"basico", senhaAdmin:""});
+  const [dadosEditarTenant, setDadosEditarTenant] = useState({nome:"", email:"", telefone:"", plano:"basico", senhaAdmin:""});
   const [loginUser_atual, setLoginUser_atual] = useState(null);
   const [telaUsuarios, setTelaUsuarios] = useState(false);
   const [novoUsuario, setNovoUsuario] = useState({nome:"",usuario:"",senha:"",telefone:"",isAdmin:false});
@@ -94,8 +98,16 @@ function App() {
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [loginErro, setLoginErro] = useState("");
-
-  const [usuariosDB, setUsuariosDB] = useState([]);
+  const [telaRec, setTelaRec] = useState(false);
+  const [recUser, setRecUser] = useState("");
+  const [recTenant, setRecTenant] = useState("");
+  const [recMetodo, setRecMetodo] = useState("whatsapp");
+  const [recCodigo, setRecCodigo] = useState("");
+  const [recSenha, setRecSenha] = useState("");
+  const [recEtapa, setRecEtapa] = useState(1);
+  const [recMsg, setRecMsg] = useState("");
+  const [recErro, setRecErro] = useState("");
+const [usuariosDB, setUsuariosDB] = useState([]);
   const [USUARIOS, setUSUARIOS] = useState([]);
 
   const fazerLogin = async () => {
@@ -237,14 +249,14 @@ function App() {
       const id = "t_" + Date.now().toString();
       // Create tenant
       await fsLib.setDoc(fsLib.doc(db, "tenants", id), {
-        nome: novoTenant.nome, email: novoTenant.email, plano: novoTenant.plano, ativo: true, criado: new Date().toLocaleDateString("pt-BR")
+        nome: novoTenant.nome, email: novoTenant.email, telefone: novoTenant.telefone||"", plano: novoTenant.plano, ativo: true, criado: new Date().toLocaleDateString("pt-BR")
       });
       // Create default admin user for tenant
       const senhaAdmin = "admin" + Math.floor(Math.random()*9000+1000);
       await fsLib.setDoc(fsLib.doc(db, "tenants", id, "usuarios", "admin_"+id), {
         nome: "Admin " + novoTenant.nome, usuario: "admin", senha: senhaAdmin, admin: true, tenantId: id
       });
-      setNovoTenant({nome:"", email:"", plano:"basico"});
+      setNovoTenant({nome:"", email:"", telefone:"", plano:"basico"});
       setErroTenant("");
       alert("✅ Cliente criado!\n\nUsuário: admin\nSenha: " + senhaAdmin + "\n\nGuarde esta senha!");
     } catch(e) { console.error(e); setErroTenant("Erro ao criar cliente."); }
@@ -256,7 +268,7 @@ function App() {
   };
 
   const abrirEditarTenant = (tenant) => {
-    setDadosEditarTenant({nome:tenant.nome||"", email:tenant.email||"", plano:tenant.plano||"basico", senhaAdmin:""});
+    setDadosEditarTenant({nome:tenant.nome||"", email:tenant.email||"", telefone:tenant.telefone||"", plano:tenant.plano||"basico", senhaAdmin:""});
     setModalEditarTenant(tenant);
   };
 
@@ -265,7 +277,7 @@ function App() {
     if (!db||!fsLib) return;
     try {
       await fsLib.updateDoc(fsLib.doc(db, "tenants", modalEditarTenant.id), {
-        nome: dadosEditarTenant.nome, email: dadosEditarTenant.email, plano: dadosEditarTenant.plano
+        nome: dadosEditarTenant.nome, email: dadosEditarTenant.email, telefone: dadosEditarTenant.telefone||"", plano: dadosEditarTenant.plano
       });
       // Update admin password if changed
       if (dadosEditarTenant.senhaAdmin) {
@@ -478,16 +490,24 @@ function App() {
 
   const enviarMensagemDireta = async (numero, texto) => {
     try {
-      const tel = String(numero||"").replace(/[^0-9]/g, "");
+      const tel = numero.replace(/[^\d]/g, "");
       const resp = await fetch(EVOLUTION_API_URL + "/message/sendText/" + EVOLUTION_INSTANCE, {
         method: "POST",
         headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY },
         body: JSON.stringify({ number: tel, text: texto })
       });
       const data = await resp.json();
-      if (data.key || data.id) { showToast("Mensagem enviada!"); return true; }
-      else { showToast("Erro ao enviar", "erro"); return false; }
-    } catch(e) { showToast("Erro de conexao", "erro"); return false; }
+      if (data.key || data.id || data.status === "PENDING") {
+        showToast("✅ Mensagem enviada!");
+        return true;
+      } else {
+        showToast("❌ Erro: " + (data.message||"tente novamente"), "erro");
+        return false;
+      }
+    } catch(e) {
+      showToast("❌ Erro de conexão", "erro");
+      return false;
+    }
   };
 
   const gerarMsg = (aluno, cursoId=null) => {
@@ -586,6 +606,91 @@ Curso(s): ${nomeCursos}` : "")
     const dataHoje = new Date().toLocaleDateString("pt-BR");
     const recebido = alunos.reduce((s,a)=>s+(a.cursos||[]).filter(cid=>a.pagamentosCursos?.[cid]?.[mesAtual]).reduce((t,cid)=>t+(a.valoresCursos?.[cid]||0),0),0);
     const esperado = alunos.filter(a=>a.cursos?.length>0).reduce((s,a)=>s+Object.values(a.valoresCursos||{}).reduce((t,v)=>t+v,0),0);
+    const enviarCodigoRec = async function() {
+    setRecErro(""); setRecMsg("");
+    if (!recUser || !recTenant) { setRecErro("Preencha o usuario e selecione a escola."); return; }
+    try {
+      var resp = await fetch("/api/recuperar-senha", {
+        method:"POST", headers:{"Content-Type":"application/json","apikey":"minha-chave-secreta-2026"},
+        body:JSON.stringify({usuario:recUser.toLowerCase().trim(), tenantId:recTenant, metodo:recMetodo})
+      });
+      var d = await resp.json();
+      if (d.ok) { setRecMsg(d.msg); setRecEtapa(2); }
+      else setRecErro(d.erro || "Erro ao enviar codigo");
+    } catch(e) { setRecErro("Erro de conexao"); }
+  };
+
+  var verificarCodigoRec = async function() {
+    setRecErro("");
+    if (!recCodigo || !recSenha) { setRecErro("Preencha o codigo e a nova senha."); return; }
+    if (recSenha.length <= 3) { setRecErro("Senha deve ter pelo menos 4 caracteres."); return; }
+    try {
+      var resp2 = await fetch("/api/verificar-codigo", {
+        method:"POST", headers:{"Content-Type":"application/json","apikey":"minha-chave-secreta-2026"},
+        body:JSON.stringify({usuario:recUser.toLowerCase().trim(), tenantId:recTenant, codigo:recCodigo, novaSenha:recSenha})
+      });
+      var d2 = await resp2.json();
+      if (d2.ok) {
+        setTelaRec(false); setLoginUser(recUser); setRecEtapa(1);
+        setRecUser(""); setRecTenant(""); setRecCodigo(""); setRecSenha("");
+        showToast("Senha alterada! Faca login com a nova senha.");
+      } else setRecErro(d2.erro || "Codigo incorreto");
+    } catch(e) { setRecErro("Erro de conexao"); }
+  };
+
+  var bgRec = {background:"#1a1a22",border:"1px solid #2a2a35",borderRadius:24,padding:"40px 36px",width:"100%",maxWidth:400,textAlign:"center"};
+  var inpRec = {background:"#12121a",border:"1px solid #2a2a35",borderRadius:10,color:"#e8e6f0",padding:"12px 16px",width:"100%",fontSize:14,outline:"none"};
+  var errRec = {background:"#3d1010",border:"1px solid #991b1b",borderRadius:10,padding:"10px 14px",color:"#f87171",fontSize:13,textAlign:"center",marginBottom:10};
+  var okRec = {background:"#0a1f0a",border:"1px solid #16a34a",borderRadius:10,padding:"10px 14px",color:"#4ade80",fontSize:13,textAlign:"center",marginBottom:10};
+
+  var telaRecSenha = (
+    <div style={{fontFamily:"'Outfit',sans-serif",minHeight:"100vh",background:"#0f0f13",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px 16px"}}>
+      <div style={bgRec}>
+        <div style={{fontSize:32,marginBottom:8}}>🔑</div>
+        <div style={{fontSize:18,fontWeight:800,color:"#e8e6f0",marginBottom:20}}>Recuperar Senha</div>
+        <div style={{display:"flex",flexDirection:"column",gap:14,textAlign:"left"}}>
+          <div style={{display:recEtapa===1?"block":"none"}}>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Usuario</label>
+              <input value={recUser} onChange={function(e){setRecUser(e.target.value);}} placeholder="Seu usuario" style={inpRec}/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Escola</label>
+              <select value={recTenant} onChange={function(e){setRecTenant(e.target.value);}} style={inpRec}>
+                <option value="">Selecione a escola</option>
+                {tenants.filter(function(t){return t.ativo;}).map(function(t){return React.createElement("option",{key:t.id,value:t.id},t.nome);})}
+              </select>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:8}}>Receber codigo por</label>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={function(){setRecMetodo("whatsapp");}} style={{flex:1,padding:"10px",borderRadius:10,border:"2px solid #25d366",background:recMetodo==="whatsapp"?"#0a1f0a":"#12121a",color:"#25d366",cursor:"pointer",fontWeight:600}}>WhatsApp</button>
+                <button onClick={function(){setRecMetodo("email");}} style={{flex:1,padding:"10px",borderRadius:10,border:"2px solid #6c3fc5",background:recMetodo==="email"?"#1a0f2e":"#12121a",color:"#9b5de5",cursor:"pointer",fontWeight:600}}>Email</button>
+              </div>
+            </div>
+            <div style={{display:recErro?"block":"none"}}><div style={errRec}>{recErro}</div></div>
+            <button onClick={enviarCodigoRec} style={{background:"linear-gradient(135deg,#6c3fc5,#9b5de5)",color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:10}}>Enviar Codigo</button>
+            <div style={{textAlign:"center"}}><span onClick={function(){setTelaRec(false);}} style={{color:"#666",fontSize:13,cursor:"pointer"}}>Voltar ao login</span></div>
+          </div>
+          <div style={{display:recEtapa===2?"block":"none"}}>
+            <div style={{display:recMsg?"block":"none"}}><div style={okRec}>{recMsg}</div></div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Codigo recebido</label>
+              <input value={recCodigo} onChange={function(e){setRecCodigo(e.target.value);}} placeholder="Codigo de 6 digitos" maxLength={6} style={{background:"#12121a",border:"1px solid #2a2a35",borderRadius:10,color:"#e8e6f0",padding:"12px 16px",width:"100%",fontSize:20,outline:"none",textAlign:"center",letterSpacing:8,fontWeight:700}}/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Nova senha</label>
+              <input type="password" value={recSenha} onChange={function(e){setRecSenha(e.target.value);}} placeholder="Nova senha" style={inpRec}/>
+            </div>
+            <div style={{display:recErro?"block":"none"}}><div style={errRec}>{recErro}</div></div>
+            <button onClick={verificarCodigoRec} style={{background:"linear-gradient(135deg,#16a34a,#4ade80)",color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:10}}>Confirmar Nova Senha</button>
+            <div style={{textAlign:"center"}}><span onClick={function(){setRecEtapa(1);setRecErro("");}} style={{color:"#666",fontSize:13,cursor:"pointer"}}>Reenviar codigo</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
     const totalPagos = alunos.filter(a=>isPago(a)).length;
     const totalAtrasados = alunos.filter(a=>isAtrasado(a)).length;
     const totalParcial = alunos.filter(a=>isParcial(a)).length;
@@ -780,7 +885,92 @@ Curso(s): ${nomeCursos}` : "")
     const win = window.open("","_blank"); win.document.write(gerarReciboHTML(aluno,mesKey,cursoId,nomeCurso)); win.document.close();
   };
 
-  const totalPagos = (a) => Object.values(a.pagamentos||{}).filter(Boolean).length;
+  const enviarCodigoRec = async function() {
+    setRecErro(""); setRecMsg("");
+    if (!recUser || !recTenant) { setRecErro("Preencha o usuario e selecione a escola."); return; }
+    try {
+      var resp = await fetch("/api/recuperar-senha", {
+        method:"POST", headers:{"Content-Type":"application/json","apikey":"minha-chave-secreta-2026"},
+        body:JSON.stringify({usuario:recUser.toLowerCase().trim(), tenantId:recTenant, metodo:recMetodo})
+      });
+      var d = await resp.json();
+      if (d.ok) { setRecMsg(d.msg); setRecEtapa(2); }
+      else setRecErro(d.erro || "Erro ao enviar codigo");
+    } catch(e) { setRecErro("Erro de conexao"); }
+  };
+
+  var verificarCodigoRec = async function() {
+    setRecErro("");
+    if (!recCodigo || !recSenha) { setRecErro("Preencha o codigo e a nova senha."); return; }
+    if (recSenha.length <= 3) { setRecErro("Senha deve ter pelo menos 4 caracteres."); return; }
+    try {
+      var resp2 = await fetch("/api/verificar-codigo", {
+        method:"POST", headers:{"Content-Type":"application/json","apikey":"minha-chave-secreta-2026"},
+        body:JSON.stringify({usuario:recUser.toLowerCase().trim(), tenantId:recTenant, codigo:recCodigo, novaSenha:recSenha})
+      });
+      var d2 = await resp2.json();
+      if (d2.ok) {
+        setTelaRec(false); setLoginUser(recUser); setRecEtapa(1);
+        setRecUser(""); setRecTenant(""); setRecCodigo(""); setRecSenha("");
+        showToast("Senha alterada! Faca login com a nova senha.");
+      } else setRecErro(d2.erro || "Codigo incorreto");
+    } catch(e) { setRecErro("Erro de conexao"); }
+  };
+
+  var bgRec = {background:"#1a1a22",border:"1px solid #2a2a35",borderRadius:24,padding:"40px 36px",width:"100%",maxWidth:400,textAlign:"center"};
+  var inpRec = {background:"#12121a",border:"1px solid #2a2a35",borderRadius:10,color:"#e8e6f0",padding:"12px 16px",width:"100%",fontSize:14,outline:"none"};
+  var errRec = {background:"#3d1010",border:"1px solid #991b1b",borderRadius:10,padding:"10px 14px",color:"#f87171",fontSize:13,textAlign:"center",marginBottom:10};
+  var okRec = {background:"#0a1f0a",border:"1px solid #16a34a",borderRadius:10,padding:"10px 14px",color:"#4ade80",fontSize:13,textAlign:"center",marginBottom:10};
+
+  var telaRecSenha = (
+    <div style={{fontFamily:"'Outfit',sans-serif",minHeight:"100vh",background:"#0f0f13",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={bgRec}>
+        <div style={{fontSize:32,marginBottom:8}}>🔑</div>
+        <div style={{fontSize:18,fontWeight:800,color:"#e8e6f0",marginBottom:20}}>Recuperar Senha</div>
+        <div style={{display:"flex",flexDirection:"column",gap:14,textAlign:"left"}}>
+          <div style={{display:recEtapa===1?"block":"none"}}>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Usuario</label>
+              <input value={recUser} onChange={function(e){setRecUser(e.target.value);}} placeholder="Seu usuario" style={inpRec}/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Escola</label>
+              <select value={recTenant} onChange={function(e){setRecTenant(e.target.value);}} style={inpRec}>
+                <option value="">Selecione a escola</option>
+                {tenants.filter(function(t){return t.ativo;}).map(function(t){return React.createElement("option",{key:t.id,value:t.id},t.nome);})}
+              </select>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:8}}>Receber codigo por</label>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={function(){setRecMetodo("whatsapp");}} style={{flex:1,padding:"10px",borderRadius:10,border:"2px solid #25d366",background:recMetodo==="whatsapp"?"#0a1f0a":"#12121a",color:"#25d366",cursor:"pointer",fontWeight:600}}>WhatsApp</button>
+                <button onClick={function(){setRecMetodo("email");}} style={{flex:1,padding:"10px",borderRadius:10,border:"2px solid #6c3fc5",background:recMetodo==="email"?"#1a0f2e":"#12121a",color:"#9b5de5",cursor:"pointer",fontWeight:600}}>Email</button>
+              </div>
+            </div>
+            <div style={{display:recErro?"block":"none"}}><div style={errRec}>{recErro}</div></div>
+            <button onClick={enviarCodigoRec} style={{background:"linear-gradient(135deg,#6c3fc5,#9b5de5)",color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:10}}>Enviar Codigo</button>
+            <div style={{textAlign:"center"}}><span onClick={function(){setTelaRec(false);}} style={{color:"#666",fontSize:13,cursor:"pointer"}}>Voltar ao login</span></div>
+          </div>
+          <div style={{display:recEtapa===2?"block":"none"}}>
+            <div style={{display:recMsg?"block":"none"}}><div style={okRec}>{recMsg}</div></div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Codigo recebido</label>
+              <input value={recCodigo} onChange={function(e){setRecCodigo(e.target.value);}} placeholder="Codigo de 6 digitos" maxLength={6} style={{background:"#12121a",border:"1px solid #2a2a35",borderRadius:10,color:"#e8e6f0",padding:"12px 16px",width:"100%",fontSize:20,outline:"none",textAlign:"center",letterSpacing:8,fontWeight:700}}/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Nova senha</label>
+              <input type="password" value={recSenha} onChange={function(e){setRecSenha(e.target.value);}} placeholder="Nova senha" style={inpRec}/>
+            </div>
+            <div style={{display:recErro?"block":"none"}}><div style={errRec}>{recErro}</div></div>
+            <button onClick={verificarCodigoRec} style={{background:"linear-gradient(135deg,#16a34a,#4ade80)",color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",width:"100%",marginBottom:10}}>Confirmar Nova Senha</button>
+            <div style={{textAlign:"center"}}><span onClick={function(){setRecEtapa(1);setRecErro("");}} style={{color:"#666",fontSize:13,cursor:"pointer"}}>Reenviar codigo</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+    const totalPagos = (a) => Object.values(a.pagamentos||{}).filter(Boolean).length;
 
   const telaLogin = (
     <div style={{fontFamily:"'Outfit',sans-serif",minHeight:"100vh",background:"#0f0f13",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
@@ -800,10 +990,26 @@ Curso(s): ${nomeCursos}` : "")
           </div>
           {loginErro && <div style={{background:"#3d1010",border:"1px solid #991b1b",borderRadius:10,padding:"10px 14px",color:"#f87171",fontSize:13,textAlign:"center"}}>{loginErro}</div>}
           <button onClick={fazerLogin} style={{background:"linear-gradient(135deg,#6c3fc5,#9b5de5)",color:"#fff",border:"none",borderRadius:12,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4}}>Entrar →</button>
+          <div style={{textAlign:"center",marginTop:8}}>
+            <span onClick={async function(){
+              setTelaRec(true);setRecEtapa(1);setRecErro("");setRecMsg("");setRecUser(loginUser);
+              try {
+                var fdb = window._db;
+                var fLib = window._fsLib;
+                if (fdb && fLib) {
+                  var snap = await fLib.getDocs(fLib.collection(fdb,"tenants"));
+                  var list = snap.docs.filter(function(d){return d.data().ativo;}).map(function(d){return {id:d.id,...d.data()};});
+                  setTenants(list);
+                }
+              } catch(e) { console.log("tenants err",e); }
+            }} style={{color:"#9b5de5",fontSize:13,cursor:"pointer",textDecoration:"underline"}}>Esqueci minha senha</span>
+          </div>
         </div>
       </div>
     </div>
   );
+
+
 
   // Master admin screen
   if (logado && loginUser_atual?.master) return (
@@ -823,18 +1029,19 @@ Curso(s): ${nomeCursos}` : "")
       <div style={{padding:"28px",maxWidth:900,margin:"0 auto"}}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:16,marginBottom:28}}>
           {[{label:"Total Clientes",val:tenants.length,cor:"#9b5de5"},{label:"Ativos",val:tenants.filter(t=>t.ativo).length,cor:"#4ade80"},{label:"Inativos",val:tenants.filter(t=>!t.ativo).length,cor:"#f87171"}].map((s,i)=>(
-            <div key={i} className="card" style={{padding:"18px 20px"}}>
+            <div key={i} className="card stat-card" style={{padding:"18px 20px"}}>
               <div style={{fontSize:11,color:"#666",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>{s.label}</div>
-              <div style={{fontSize:28,fontWeight:800,color:s.cor,marginTop:4}}>{s.val}</div>
+              <div className="stat-num" style={{fontSize:28,fontWeight:800,color:s.cor,marginTop:4}}>{s.val}</div>
             </div>
           ))}
         </div>
 
         <div className="card" style={{padding:24,marginBottom:24}}>
           <div style={{fontWeight:700,marginBottom:16}}>➕ Novo Cliente</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
-            <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Nome da Escola/Empresa *</label><input className="input-field" placeholder="Ex: Studio Dance" value={novoTenant.nome} onChange={e=>setNovoTenant(p=>({...p,nome:e.target.value}))}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,marginBottom:12}}>
+            <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Nome da Escola/Empresa *</label><input className="input-field" placeholder="Ex: Studio Dance" value={novoTenant.nome} onChange={e=>setNovoTenant(p=>({...p,email:e.target.value}))}/></div>
             <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Email do Admin *</label><input className="input-field" placeholder="admin@studio.com" value={novoTenant.email} onChange={e=>setNovoTenant(p=>({...p,email:e.target.value}))}/></div>
+            <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>WhatsApp do Admin</label><input className="input-field" placeholder="Ex: 33783600611" value={novoTenant.telefone||""} onChange={e=>setNovoTenant(p=>({...p,telefone:e.target.value}))}/></div>
             <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Plano</label>
               <select className="input-field" value={novoTenant.plano} onChange={e=>setNovoTenant(p=>({...p,plano:e.target.value}))} style={{background:"#12121a",color:"#e8e6f0"}}>
                 <option value="basico">Básico</option>
@@ -891,6 +1098,10 @@ Curso(s): ${nomeCursos}` : "")
               <div>
                 <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Email</label>
                 <input className="input-field" type="email" value={dadosEditarTenant.email} onChange={e=>setDadosEditarTenant(p=>({...p,email:e.target.value}))} placeholder="admin@studio.com"/>
+              </div>
+              <div>
+                <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>WhatsApp do Admin</label>
+                <input className="input-field" placeholder="Ex: 33783600611" value={dadosEditarTenant.telefone||""} onChange={e=>setDadosEditarTenant(p=>({...p,telefone:e.target.value}))}/>
               </div>
               <div>
                 <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Plano</label>
@@ -957,11 +1168,35 @@ Curso(s): ${nomeCursos}` : "")
         .progress-bar{height:8px;background:#2a2a35;border-radius:999px;overflow:hidden}
         .progress-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#6c3fc5,#9b5de5);transition:width .8s ease}
         @keyframes spin{to{transform:rotate(360deg)}}.spinner{width:40px;height:40px;border:3px solid #2a2a35;border-top-color:#9b5de5;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto}
-        @media(max-width:640px){.sidebar{display:none!important}.mobile-nav{display:flex!important}.main-content{margin-left:0!important}}
-        .mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:#1a1a22;border-top:1px solid #2a2a35;padding:10px 0 20px;z-index:50;justify-content:space-around}
-        .mob-item{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:#888;padding:6px 12px;border-radius:8px}
-        .mob-item.active{color:#9b5de5}
+        @media(max-width:640px){
+          .sidebar{display:none!important}
+          .mobile-nav{display:flex!important}
+          .mobile-topbar{display:flex!important}
+          .main-content{margin-left:0!important;padding:14px 12px!important;padding-bottom:90px!important;padding-top:70px!important}
+          .modal{padding:20px 16px!important;border-radius:20px!important;margin:8px!important;max-height:90vh!important;overflow-y:auto!important}
+          .overlay{padding:8px!important;align-items:flex-end!important}
+          .aluno-row{padding:12px!important}
+          h1{font-size:18px!important}
+          h2{font-size:16px!important}
+          h3{font-size:15px!important}
+          .btn{font-size:13px!important;padding:10px 14px!important}
+          .card{border-radius:12px!important}
+          .toast{right:12px!important;bottom:80px!important;font-size:13px!important;padding:10px 14px!important;left:12px!important;text-align:center!important}
+          .input-field{font-size:16px!important}
+          input{font-size:16px!important}
+          select{font-size:16px!important}
+          .stat-card{padding:14px!important}
+          .stat-num{font-size:24px!important}
+        }
+        @media(max-width:400px){
+          .main-content{padding:12px 10px!important;padding-bottom:90px!important;padding-top:70px!important}
+        }
+        .mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:#14141c;border-top:1px solid #2a2a35;padding:8px 0 env(safe-area-inset-bottom,18px);z-index:50;justify-content:space-around;box-shadow:0 -4px 20px rgba(0,0,0,.4)}
+        .mob-item{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;font-size:9px;color:#666;padding:8px 10px;border-radius:10px;transition:all .2s;min-width:56px;-webkit-tap-highlight-color:transparent}
+        .mob-item.active{color:#9b5de5;background:#1a1030}
+        .mob-item:active{transform:scale(.93)}
         select.input-field option{background:#1a1a22}
+        .mobile-topbar{display:none}
       `}</style>
 
       <div className="sidebar" style={{position:"fixed",left:0,top:0,bottom:0,width:220,background:"#14141c",borderRight:"1px solid #2a2a35",padding:"24px 16px",display:"flex",flexDirection:"column",gap:4,zIndex:50}}>
@@ -993,9 +1228,9 @@ Curso(s): ${nomeCursos}` : "")
       </div>
 
       <div className="mobile-nav">
-        {[{id:"dashboard",icon:"📊",label:"Início"},{id:"alunos",icon:"👥",label:"Alunos"},{id:"mensagens",icon:"💬",label:"Msgs"},{id:"relatorio",icon:"📋",label:"Relatório"}].map(i=>(
-          <div key={i.id} className={`mob-item ${tela===i.id?"active":""}`} onClick={()=>{setTela(i.id);setAlunoSelecionado(null);}}>
-            <span style={{fontSize:22}}>{i.icon}</span><span>{i.label}</span>
+        {[{id:"dashboard",icon:"📊",label:"Início"},{id:"alunos",icon:"👥",label:"Alunos"},{id:"cursos",icon:"📚",label:"Cursos"},{id:"mensagens",icon:"💬",label:"Msgs"},{id:"relatorio",icon:"📋",label:"Relatório"}].map(i=>(
+          <div key={i.id} className={"mob-item "+(tela===i.id?"active":"")} onClick={()=>{setTela(i.id);setAlunoSelecionado(null);}}>
+            <span style={{fontSize:24}}>{i.icon}</span><span style={{fontSize:10,fontWeight:600}}>{i.label}</span>
           </div>
         ))}
         <div className={`mob-item ${tela==="cursos"?"active":""}`} onClick={()=>{setTela("cursos");setAlunoSelecionado(null);}}>
@@ -1006,7 +1241,19 @@ Curso(s): ${nomeCursos}` : "")
         </div>
       </div>
 
-      <div className="main-content" style={{marginLeft:220,padding:"32px 28px",paddingBottom:100}}>
+      <div className="mobile-topbar" style={{display:"none",position:"fixed",top:0,left:0,right:0,background:"#14141c",borderBottom:"1px solid #2a2a35",padding:"12px 16px",zIndex:49,alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <img src={LOGO_B64} alt="logo" style={{width:30,height:30,borderRadius:"50%",objectFit:"cover"}}/>
+          <div>
+            <div style={{fontWeight:700,fontSize:13,color:"#e8e6f0"}}>{tenantAtual?.nome||"Mensalidade"}</div>
+            <div style={{fontSize:10,color:"#555"}}>{loginUser_atual?.nome||""}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{fontSize:11,color:"#666",background:"#1a1a22",padding:"4px 10px",borderRadius:20,border:"1px solid #2a2a35"}}>{loginUser_atual?.admin?"Admin":"Usuario"}</div>
+        </div>
+      </div>
+      <div className="main-content" style={{marginLeft:220,padding:"32px 28px",paddingBottom:100,minHeight:"100vh"}}>
         {carregando ? (
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"60vh",gap:16}}>
             <div className="spinner"/><div style={{color:"#666",fontSize:14}}>Conectando...</div>
@@ -1018,9 +1265,9 @@ Curso(s): ${nomeCursos}` : "")
               <div style={{marginBottom:28}}><h1 style={{fontSize:26,fontWeight:800}}>Olá! 👋</h1><p style={{color:"#888",marginTop:4}}>Resumo de {getNomeMes(mesAtual)}</p></div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:16,marginBottom:28}}>
                 {[{label:"Total de Alunos",valor:alunos.length,icon:"👥",cor:"#9b5de5"},{label:"Pagamentos OK",valor:pagosHoje,icon:"✅",cor:"#4ade80"},{label:"Em Atraso",valor:inadimplentes,icon:"⚠️",cor:"#f87171"},{label:"Recebido",valor:`R$ ${totalRecebido.toLocaleString("pt-BR")}`,icon:"💰",cor:"#facc15"}].map((s,i)=>(
-                  <div key={i} className="card" style={{padding:"20px 22px"}}>
+                  <div key={i} className="card stat-card" style={{padding:"20px 22px"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                      <div><div style={{fontSize:11,color:"#666",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>{s.label}</div><div style={{fontSize:28,fontWeight:800,color:s.cor,marginTop:6}}>{s.valor}</div></div>
+                      <div><div style={{fontSize:11,color:"#666",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>{s.label}</div><div className="stat-num" style={{fontSize:28,fontWeight:800,color:s.cor,marginTop:6}}>{s.valor}</div></div>
                       <span style={{fontSize:28}}>{s.icon}</span>
                     </div>
                   </div>
@@ -1264,7 +1511,7 @@ Curso(s): ${nomeCursos}` : "")
                     <div className="card" style={{padding:24,marginBottom:20}}>
                       <div style={{fontWeight:700,marginBottom:12}}>💬 Cobrança</div>
                       <div style={{background:"#12121a",borderRadius:10,padding:16,fontSize:13,color:"#ccc",lineHeight:1.7,whiteSpace:"pre-wrap",marginBottom:14}}>{gerarMsg(alunoSelecionado)}</div>
-                      <button className="btn" style={{background:"#25d366",color:"#fff",padding:"10px 18px",fontSize:14,width:"100%"}} onClick={async()=>{await enviarMensagemDireta(alunoSelecionado.telefone,gerarMsg(alunoSelecionado));}}>Enviar</button>
+                      <button className="btn" style={{background:"#25d366",color:"#fff",padding:"10px 18px",fontSize:14,width:"100%"}} onClick={async()=>{await enviarMensagemDireta(alunoSelecionado.telefone,gerarMsg(alunoSelecionado));}}>📲 Enviar</button>
                     </div>
                   )}
                 </>
@@ -1303,8 +1550,7 @@ Curso(s): ${nomeCursos}` : "")
                         <div style={{fontSize:11,color:"#666",marginTop:2}}>{cursos.filter(c=>a.cursos?.includes(c.id)&&!a.pagamentosCursos?.[c.id]?.[mesAtual]).map(c=>c.nome).join(", ")}</div>
                       </div>
                       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                        <button className="btn" style={{background:"#25d366",color:"#fff",padding:"8px 14px",fontSize:12}} onClick={async()=>{await enviarMensagemDireta(a.telefone,gerarMsg(a));}}>Enviar</button>
-                        <button className="btn" style={{background:"#6c3fc5",color:"#fff",padding:"8px 14px",fontSize:12}} onClick={()=>setMensagemEnviada(a)}>👁️ Ver msg</button>
+                        <button className="btn" style={{background:"#25d366",color:"#fff",padding:"8px 14px",fontSize:12}} onClick={async()=>{await enviarMensagemDireta(a.telefone,gerarMsg(a));}}>📲 Enviar</button>
                       </div>
                     </div>
                   </div>
@@ -1665,7 +1911,7 @@ Curso(s): ${nomeCursos}` : "")
             <div style={{background:"#0d1e14",border:"1px solid #166534",borderRadius:12,padding:18,fontSize:14,lineHeight:1.8,whiteSpace:"pre-wrap",color:"#d1fae5",marginBottom:16}}>{gerarMsg(mensagemEnviada)}</div>
             <div style={{display:"flex",gap:10}}>
               <button className="btn" style={{background:"#2a2a35",color:"#888",padding:"10px 16px",flex:1}} onClick={()=>setMensagemEnviada(null)}>Fechar</button>
-              <button className="btn" style={{background:"#25d366",color:"#fff",padding:"10px 16px",flex:2}} onClick={async()=>{const ok=await enviarMensagemDireta(mensagemEnviada.telefone,gerarMsg(mensagemEnviada));if(ok)setMensagemEnviada(null);}}>Enviar Agora</button>
+              <button className="btn" style={{background:"#25d366",color:"#fff",padding:"10px 16px",flex:2}} onClick={async()=>{const ok=await enviarMensagemDireta(mensagemEnviada.telefone,gerarMsg(mensagemEnviada));if(ok)setMensagemEnviada(null);}}>📲 Enviar Agora</button>
             </div>
           </div>
         </div>
@@ -1674,39 +1920,38 @@ Curso(s): ${nomeCursos}` : "")
       {modalNovoCurso&&(
         <div className="overlay" onClick={()=>setModalNovoCurso(false)}>
           <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:400}}>
-            <h2 style={{fontWeight:800,marginBottom:20}}>🎓 Novo Curso</h2>
+            <h2 style={{fontWeight:800,marginBottom:20}}>➕ Novo Curso</h2>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Nome do curso *</label><input className="input-field" placeholder="Ex: Yoga, Pilates, Dança..." value={novoCurso.nome} onChange={e=>setNovoCurso(p=>({...p,nome:e.target.value}))}/></div>
-              <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Descrição</label><input className="input-field" placeholder="Ex: Turma de terça e quinta" value={novoCurso.descricao} onChange={e=>setNovoCurso(p=>({...p,descricao:e.target.value}))}/></div>
+              <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Nome do curso *</label><input className="input-field" value={novoCurso.nome} onChange={e=>setNovoCurso(p=>({...p,nome:e.target.value}))} placeholder="Ex: Violao, Canto..."/></div>
+              <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Descricao</label><input className="input-field" value={novoCurso.descricao||""} onChange={e=>setNovoCurso(p=>({...p,descricao:e.target.value}))} placeholder="Opcional"/></div>
               <div>
-                <label style={{fontSize:12,color:"#888",display:"block",marginBottom:8}}>💰 Tipo de Cobrança</label>
+                <label style={{fontSize:12,color:"#888",display:"block",marginBottom:8}}>Tipo de Cobranca</label>
                 <div style={{display:"flex",gap:8}}>
-                  {[["mensalidade","📅 Mensalidade","Cobra todo mês"],["unico","💎 Valor Único","Paga uma vez"]].map(([val,label,desc])=>(
-                    <div key={val} onClick={()=>setNovoCurso(p=>({...p,tipo:val}))} style={{flex:1,padding:"12px",borderRadius:10,cursor:"pointer",border:`2px solid ${novoCurso.tipo===val?"#6c3fc5":"#2a2a35"}`,background:novoCurso.tipo===val?"#1a1a3a":"#12121a",textAlign:"center"}}>
+                  {[["mensalidade","Mensalidade","Cobra todo mes"],["unico","Valor Unico","Paga uma vez"]].map(function(item){var val=item[0],label=item[1],desc=item[2]; return (
+                    <div key={val} onClick={()=>setNovoCurso(p=>({...p,tipo:val}))} style={{flex:1,padding:"12px",borderRadius:10,cursor:"pointer",border:"2px solid "+(novoCurso.tipo===val?"#6c3fc5":"#2a2a35"),background:novoCurso.tipo===val?"#1a1a3a":"#12121a",textAlign:"center"}}>
                       <div style={{fontWeight:700,fontSize:14,color:novoCurso.tipo===val?"#9b5de5":"#888"}}>{label}</div>
                       <div style={{fontSize:11,color:"#555",marginTop:3}}>{desc}</div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               </div>
               {novoCurso.tipo==="unico" && (
                 <div style={{background:"#1a1a2e",borderRadius:10,padding:"12px 16px"}}>
-                  <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>⏱️ Acesso expira após quantos meses?</label>
-                  <input className="input-field" type="number" min="1" max="120" placeholder="Ex: 12" value={novoCurso.mesesExpiracao} onChange={e=>setNovoCurso(p=>({...p,mesesExpiracao:e.target.value}))}/>
-                  <div style={{fontSize:11,color:"#555",marginTop:6}}>Após este período, o aluno aparecerá como expirado</div>
+                  <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Acesso expira apos quantos meses?</label>
+                  <input className="input-field" type="number" min="1" max="120" value={novoCurso.mesesExpiracao||12} onChange={e=>setNovoCurso(p=>({...p,mesesExpiracao:e.target.value}))}/>
                 </div>
               )}
               <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Cor do curso</label>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  {["#6c3fc5","#f72585","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899"].map(cor=>(
+                  {["#6c3fc5","#f72585","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899"].map(function(cor){return (
                     <div key={cor} onClick={()=>setNovoCurso(p=>({...p,cor}))} style={{width:32,height:32,borderRadius:"50%",background:cor,cursor:"pointer",border:novoCurso.cor===cor?"3px solid #fff":"3px solid transparent"}}/>
-                  ))}
+                  );})}
                 </div>
               </div>
             </div>
             <div style={{display:"flex",gap:10,marginTop:22}}>
               <button className="btn" style={{background:"#2a2a35",color:"#888",padding:"11px 20px",flex:1}} onClick={()=>setModalNovoCurso(false)}>Cancelar</button>
-              <button className="btn" style={{background:"linear-gradient(135deg,#6c3fc5,#9b5de5)",color:"#fff",padding:"11px 20px",flex:2}} onClick={adicionarCurso}>✅ Criar Curso</button>
+              <button className="btn" style={{background:"linear-gradient(135deg,#6c3fc5,#9b5de5)",color:"#fff",padding:"11px 20px",flex:2}} onClick={adicionarCurso}>Criar Curso</button>
             </div>
           </div>
         </div>
@@ -1923,7 +2168,7 @@ Curso(s): ${nomeCursos}` : "")
 
       {toast&&<div className="toast" style={{background:toast.tipo==="erro"?"#3d1010":"#0d3d2e",color:toast.tipo==="erro"?"#f87171":"#4ade80",border:`1px solid ${toast.tipo==="erro"?"#991b1b":"#166534"}`}}>{toast.msg}</div>}
     </div>
-  ) : telaLogin;
+  ) : telaRec ? telaRecSenha : telaLogin;
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
